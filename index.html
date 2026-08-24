@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Unit Converter</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+<div class="max-w-lg mx-auto px-4 py-10">
+
+  <header class="flex items-center gap-2 mb-6">
+    <i data-lucide="ruler" class="w-5 h-5 text-gray-500"></i>
+    <h1 class="text-lg font-semibold text-gray-800">Unit Converter</h1>
+  </header>
+
+  <!-- Category tabs -->
+  <div id="tabs" class="inline-flex rounded-md border border-gray-200 bg-white p-1 mb-6"></div>
+
+  <!-- Input row -->
+  <div class="flex gap-2 mb-8">
+    <input
+      id="value-input"
+      type="number"
+      min="0"
+      inputmode="decimal"
+      class="flex-1 min-w-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+      value="1"
+    />
+
+    <!-- Combobox -->
+    <div id="combobox" class="relative">
+      <button
+        id="combobox-trigger"
+        type="button"
+        class="flex items-center justify-between gap-2 w-36 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300"
+      >
+        <span id="combobox-label" class="truncate"></span>
+        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 shrink-0"></i>
+      </button>
+
+      <div
+        id="combobox-panel"
+        class="hidden absolute right-0 z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white shadow-lg"
+      >
+        <div class="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+          <i data-lucide="search" class="w-4 h-4 text-gray-400 shrink-0"></i>
+          <input
+            id="combobox-search"
+            type="text"
+            placeholder="Search unit..."
+            class="w-full text-sm outline-none placeholder:text-gray-400"
+          />
+        </div>
+        <ul id="combobox-list" class="max-h-60 overflow-y-auto py-1 text-sm"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output cards -->
+  <div id="cards" class="grid grid-cols-2 gap-3"></div>
+
+</div>
+
+<script>
+  const CATEGORIES = {
+    area: {
+      label: "Area",
+      icon: "square",
+      base: "m2",
+      units: {
+        m2:    { label: "m²",    factor: 1 },
+        km2:   { label: "km²",   factor: 1000000 },
+        ha:    { label: "ha",    factor: 10000 },
+        acre:  { label: "acre",  factor: 4046.8564224 },
+        rai:   { label: "rai",   factor: 1600 },
+        tsubo: { label: "tsubo", factor: 400 / 121 },
+      },
+    },
+    length: {
+      label: "Length",
+      icon: "move-horizontal",
+      base: "m",
+      units: {
+        mm: { label: "mm", factor: 0.001 },
+        cm: { label: "cm", factor: 0.01 },
+        m:  { label: "m",  factor: 1 },
+        km: { label: "km", factor: 1000 },
+        in: { label: "in", factor: 0.0254 },
+        ft: { label: "ft", factor: 0.3048 },
+        yd: { label: "yd", factor: 0.9144 },
+        mi: { label: "mi", factor: 1609.344 },
+      },
+    },
+    weight: {
+      label: "Weight",
+      icon: "weight",
+      base: "g",
+      units: {
+        mg: { label: "mg", factor: 0.001 },
+        g:  { label: "g",  factor: 1 },
+        kg: { label: "kg", factor: 1000 },
+        t:  { label: "t",  factor: 1000000 },
+        oz: { label: "oz", factor: 28.3495231 },
+        lb: { label: "lb", factor: 453.59237 },
+        st: { label: "st", factor: 6350.29318 },
+      },
+    },
+  };
+
+  let activeCategory = "area";
+  let activeUnit = CATEGORIES[activeCategory].base;
+
+  const tabsEl = document.getElementById("tabs");
+  const valueInput = document.getElementById("value-input");
+  const comboboxTrigger = document.getElementById("combobox-trigger");
+  const comboboxLabel = document.getElementById("combobox-label");
+  const comboboxPanel = document.getElementById("combobox-panel");
+  const comboboxSearch = document.getElementById("combobox-search");
+  const comboboxList = document.getElementById("combobox-list");
+  const cardsEl = document.getElementById("cards");
+
+  function formatNumber(n) {
+    if (!isFinite(n)) return "—";
+    const abs = Math.abs(n);
+    if (abs !== 0 && (abs < 0.000001 || abs >= 1e15)) {
+      return n.toExponential(4);
+    }
+    return n.toLocaleString(undefined, { maximumSignificantDigits: 6 });
+  }
+
+  function renderTabs() {
+    tabsEl.innerHTML = "";
+    Object.entries(CATEGORIES).forEach(([key, cat]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const isActive = key === activeCategory;
+      btn.className =
+        "px-3 py-1.5 text-sm rounded-sm transition-colors " +
+        (isActive
+          ? "bg-gray-900 text-white"
+          : "text-gray-600 hover:text-gray-900");
+      btn.textContent = cat.label;
+      btn.addEventListener("click", () => {
+        if (activeCategory === key) return;
+        activeCategory = key;
+        activeUnit = CATEGORIES[activeCategory].base;
+        renderTabs();
+        renderCombobox();
+        renderCards();
+      });
+      tabsEl.appendChild(btn);
+    });
+  }
+
+  function renderCombobox(filter = "") {
+    const cat = CATEGORIES[activeCategory];
+    comboboxLabel.textContent = cat.units[activeUnit].label;
+
+    comboboxList.innerHTML = "";
+    const q = filter.trim().toLowerCase();
+    Object.entries(cat.units)
+      .filter(([key, u]) => u.label.toLowerCase().includes(q) || key.toLowerCase().includes(q))
+      .forEach(([key, u]) => {
+        const li = document.createElement("li");
+        const isSelected = key === activeUnit;
+        li.className =
+          "flex items-center justify-between gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 " +
+          (isSelected ? "text-gray-900 font-medium" : "text-gray-700");
+        const span = document.createElement("span");
+        span.textContent = u.label;
+        li.appendChild(span);
+        if (isSelected) {
+          const icon = document.createElement("i");
+          icon.setAttribute("data-lucide", "check");
+          icon.className = "w-4 h-4 text-gray-900 shrink-0";
+          li.appendChild(icon);
+        }
+        li.addEventListener("click", () => {
+          activeUnit = key;
+          closeCombobox();
+          renderCombobox();
+          renderCards();
+        });
+        comboboxList.appendChild(li);
+      });
+
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function openCombobox() {
+    comboboxPanel.classList.remove("hidden");
+    comboboxSearch.value = "";
+    renderCombobox();
+    comboboxSearch.focus();
+  }
+
+  function closeCombobox() {
+    comboboxPanel.classList.add("hidden");
+  }
+
+  function toggleCombobox() {
+    if (comboboxPanel.classList.contains("hidden")) openCombobox();
+    else closeCombobox();
+  }
+
+  function renderCards() {
+    const cat = CATEGORIES[activeCategory];
+    const raw = parseFloat(valueInput.value);
+    const value = isNaN(raw) ? 0 : raw;
+    const baseValue = value * cat.units[activeUnit].factor;
+
+    cardsEl.innerHTML = "";
+    Object.entries(cat.units)
+      .filter(([key]) => key !== activeUnit)
+      .forEach(([key, u]) => {
+        const converted = baseValue / u.factor;
+        const card = document.createElement("div");
+        card.className = "rounded-md border border-gray-200 bg-white p-4 shadow-sm";
+        card.innerHTML = `
+          <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">${u.label}</div>
+          <div class="text-lg font-semibold text-gray-800 break-all">${formatNumber(converted)}</div>
+        `;
+        cardsEl.appendChild(card);
+      });
+  }
+
+  // Events
+  valueInput.addEventListener("input", renderCards);
+  comboboxTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleCombobox();
+  });
+  comboboxSearch.addEventListener("input", (e) => renderCombobox(e.target.value));
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("combobox").contains(e.target)) closeCombobox();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeCombobox();
+  });
+
+  // Init
+  renderTabs();
+  renderCombobox();
+  renderCards();
+  if (window.lucide) lucide.createIcons();
+</script>
+
+</body>
+</html>
