@@ -70,12 +70,12 @@
       icon: "square",
       base: "m2",
       units: {
-        m2:    { label: "m²",    factor: 1 },
-        km2:   { label: "km²",   factor: 1000000 },
-        ha:    { label: "ha",    factor: 10000 },
-        acre:  { label: "acre",  factor: 4046.8564224 },
-        rai:   { label: "rai",   factor: 1600 },
-        tsubo: { label: "tsubo", factor: 400 / 121 },
+        m2:    { label: "m²",    name: "Square meter",      factor: 1 },
+        km2:   { label: "km²",   name: "Square kilometer",  factor: 1000000 },
+        ha:    { label: "ha",    name: "Hectare",           factor: 10000 },
+        acre:  { label: "acre",  name: "Acre",              factor: 4046.8564224 },
+        rai:   { label: "rai",   name: "Rai",               factor: 1600 },
+        tsubo: { label: "tsubo", name: "Tsubo",             factor: 400 / 121 },
       },
     },
     length: {
@@ -83,14 +83,14 @@
       icon: "move-horizontal",
       base: "m",
       units: {
-        mm: { label: "mm", factor: 0.001 },
-        cm: { label: "cm", factor: 0.01 },
-        m:  { label: "m",  factor: 1 },
-        km: { label: "km", factor: 1000 },
-        in: { label: "in", factor: 0.0254 },
-        ft: { label: "ft", factor: 0.3048 },
-        yd: { label: "yd", factor: 0.9144 },
-        mi: { label: "mi", factor: 1609.344 },
+        mm: { label: "mm", name: "Millimeter", factor: 0.001 },
+        cm: { label: "cm", name: "Centimeter", factor: 0.01 },
+        m:  { label: "m",  name: "Meter",      factor: 1 },
+        km: { label: "km", name: "Kilometer",  factor: 1000 },
+        in: { label: "in", name: "Inch",       factor: 0.0254 },
+        ft: { label: "ft", name: "Foot",       factor: 0.3048 },
+        yd: { label: "yd", name: "Yard",       factor: 0.9144 },
+        mi: { label: "mi", name: "Mile",       factor: 1609.344 },
       },
     },
     weight: {
@@ -98,13 +98,13 @@
       icon: "weight",
       base: "g",
       units: {
-        mg: { label: "mg", factor: 0.001 },
-        g:  { label: "g",  factor: 1 },
-        kg: { label: "kg", factor: 1000 },
-        t:  { label: "t",  factor: 1000000 },
-        oz: { label: "oz", factor: 28.3495231 },
-        lb: { label: "lb", factor: 453.59237 },
-        st: { label: "st", factor: 6350.29318 },
+        mg: { label: "mg", name: "Milligram",  factor: 0.001 },
+        g:  { label: "g",  name: "Gram",       factor: 1 },
+        kg: { label: "kg", name: "Kilogram",   factor: 1000 },
+        t:  { label: "t",  name: "Metric ton", factor: 1000000 },
+        oz: { label: "oz", name: "Ounce",      factor: 28.3495231 },
+        lb: { label: "lb", name: "Pound",      factor: 453.59237 },
+        st: { label: "st", name: "Stone",      factor: 6350.29318 },
       },
     },
   };
@@ -168,9 +168,16 @@
         li.className =
           "flex items-center justify-between gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 " +
           (isSelected ? "text-gray-900 font-medium" : "text-gray-700");
-        const span = document.createElement("span");
-        span.textContent = u.label;
-        li.appendChild(span);
+        const labelWrap = document.createElement("span");
+        labelWrap.className = "flex items-baseline gap-1.5 min-w-0";
+        const abbr = document.createElement("span");
+        abbr.textContent = u.label;
+        const name = document.createElement("span");
+        name.textContent = u.name;
+        name.className = "text-xs text-gray-400 truncate";
+        labelWrap.appendChild(abbr);
+        labelWrap.appendChild(name);
+        li.appendChild(labelWrap);
         if (isSelected) {
           const icon = document.createElement("i");
           icon.setAttribute("data-lucide", "check");
@@ -219,7 +226,10 @@
         const card = document.createElement("div");
         card.className = "rounded-md border border-gray-200 bg-white p-4 shadow-sm";
         card.innerHTML = `
-          <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">${u.label}</div>
+          <div class="flex items-baseline gap-1.5 mb-1">
+            <span class="text-xs uppercase tracking-wide text-gray-400">${u.label}</span>
+            <span class="text-xs text-gray-400 truncate">${u.name}</span>
+          </div>
           <div class="text-lg font-semibold text-gray-800 break-all">${formatNumber(converted)}</div>
         `;
         cardsEl.appendChild(card);
