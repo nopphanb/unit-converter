@@ -16,7 +16,10 @@
   </header>
 
   <!-- Category tabs -->
-  <div id="tabs" class="inline-flex rounded-md border border-gray-200 bg-white p-1 mb-6"></div>
+  <div id="tabs" class="inline-flex rounded-md border border-gray-200 bg-white p-1 mb-4"></div>
+
+  <!-- Currency status banner (currency tab only) -->
+  <div id="currency-banner" class="hidden mb-4"></div>
 
   <!-- Input row -->
   <div class="flex gap-2 mb-8">
@@ -107,7 +110,22 @@
         st: { label: "st", name: "Stone",      factor: 6350.29318 },
       },
     },
+    currency: {
+      label: "Currency",
+      icon: "banknote",
+      base: "usd",
+      units: {
+        usd: { label: "USD", name: "US Dollar",     factor: 1 },
+        gbp: { label: "GBP", name: "British Pound", factor: null },
+        jpy: { label: "JPY", name: "Japanese Yen",  factor: null },
+        thb: { label: "THB", name: "Thai Baht",     factor: null },
+      },
+    },
   };
+
+  const CURRENCY_CACHE_KEY = "currencyRates";
+  let currencyState = "idle"; // idle | loading | live | cached | error
+  let currencyRatesDate = null;
 
   let activeCategory = "area";
   let activeUnit = CATEGORIES[activeCategory].base;
@@ -120,6 +138,7 @@
   const comboboxSearch = document.getElementById("combobox-search");
   const comboboxList = document.getElementById("combobox-list");
   const cardsEl = document.getElementById("cards");
+  const currencyBannerEl = document.getElementById("currency-banner");
 
   function formatNumber(n) {
     if (!isFinite(n)) return "—";
@@ -128,6 +147,119 @@
       return n.toExponential(4);
     }
     return n.toLocaleString(undefined, { maximumSignificantDigits: 6 });
+  }
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function loadCachedRates() {
+    try {
+      const raw = localStorage.getItem(CURRENCY_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCachedRates(entry) {
+    try {
+      localStorage.setItem(CURRENCY_CACHE_KEY, JSON.stringify(entry));
+    } catch {}
+  }
+
+  function applyCurrencyRates(rates) {
+    const u = CATEGORIES.currency.units;
+    u.usd.factor = 1;
+    u.gbp.factor = 1 / rates.gbp;
+    u.jpy.factor = 1 / rates.jpy;
+    u.thb.factor = 1 / rates.thb;
+  }
+
+  function fetchCurrencyRates(force = false) {
+    const today = todayStr();
+    const cached = loadCachedRates();
+
+    if (!force && cached && cached.fetchedOn === today) {
+      applyCurrencyRates(cached.rates);
+      currencyState = "live";
+      currencyRatesDate = cached.date;
+      renderCurrencyBanner();
+      renderCards();
+      return;
+    }
+
+    currencyState = "loading";
+    renderCurrencyBanner();
+    renderCards();
+
+    fetch("https://api.frankfurter.dev/v1/latest?from=USD&to=GBP,JPY,THB")
+      .then((res) => {
+        if (!res.ok) throw new Error("Request failed");
+        return res.json();
+      })
+      .then((data) => {
+        const rates = { usd: 1, gbp: data.rates.GBP, jpy: data.rates.JPY, thb: data.rates.THB };
+        applyCurrencyRates(rates);
+        currencyState = "live";
+        currencyRatesDate = data.date;
+        saveCachedRates({ fetchedOn: today, date: data.date, rates });
+      })
+      .catch(() => {
+        if (cached) {
+          applyCurrencyRates(cached.rates);
+          currencyState = "cached";
+          currencyRatesDate = cached.date;
+        } else {
+          currencyState = "error";
+        }
+      })
+      .finally(() => {
+        renderCurrencyBanner();
+        renderCards();
+      });
+  }
+
+  function renderCurrencyBanner() {
+    if (activeCategory !== "currency") {
+      currencyBannerEl.classList.add("hidden");
+      return;
+    }
+    currencyBannerEl.classList.remove("hidden");
+
+    if (currencyState === "loading") {
+      currencyBannerEl.innerHTML = `
+        <div class="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin shrink-0"></i>
+          <span>Fetching live rates…</span>
+        </div>`;
+    } else if (currencyState === "live") {
+      currencyBannerEl.innerHTML = `
+        <div class="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+          <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          <span>Rates as of ${currencyRatesDate} (USD base) · Frankfurter API</span>
+        </div>`;
+    } else if (currencyState === "cached") {
+      currencyBannerEl.innerHTML = `
+        <div class="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0"></i>
+          <span>Showing cached rates from ${currencyRatesDate} — couldn't refresh</span>
+        </div>`;
+    } else if (currencyState === "error") {
+      currencyBannerEl.innerHTML = `
+        <div class="flex items-center justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          <div class="flex items-center gap-2">
+            <i data-lucide="circle-alert" class="w-4 h-4 shrink-0"></i>
+            <span>Couldn't load exchange rates</span>
+          </div>
+          <button id="currency-retry" type="button" class="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700">Retry</button>
+        </div>`;
+      document.getElementById("currency-retry").addEventListener("click", () => fetchCurrencyRates(true));
+    } else {
+      currencyBannerEl.innerHTML = "";
+    }
+
+    if (window.lucide) lucide.createIcons();
   }
 
   function renderTabs() {
@@ -148,7 +280,11 @@
         activeUnit = CATEGORIES[activeCategory].base;
         renderTabs();
         renderCombobox();
+        renderCurrencyBanner();
         renderCards();
+        if (key === "currency" && currencyState === "idle") {
+          fetchCurrencyRates();
+        }
       });
       tabsEl.appendChild(btn);
     });
@@ -214,6 +350,25 @@
 
   function renderCards() {
     const cat = CATEGORIES[activeCategory];
+    const factorsReady = Object.values(cat.units).every((u) => typeof u.factor === "number");
+
+    if (!factorsReady) {
+      if (activeCategory === "currency" && currencyState === "error") {
+        cardsEl.innerHTML = "";
+      } else {
+        cardsEl.innerHTML = Array.from({ length: 3 })
+          .map(
+            () => `
+          <div class="rounded-md border border-gray-200 bg-white p-4 shadow-sm animate-pulse">
+            <div class="h-3 w-16 bg-gray-200 rounded mb-3"></div>
+            <div class="h-5 w-20 bg-gray-200 rounded"></div>
+          </div>`
+          )
+          .join("");
+      }
+      return;
+    }
+
     const raw = parseFloat(valueInput.value);
     const value = isNaN(raw) ? 0 : raw;
     const baseValue = value * cat.units[activeUnit].factor;
@@ -253,6 +408,7 @@
   // Init
   renderTabs();
   renderCombobox();
+  renderCurrencyBanner();
   renderCards();
   if (window.lucide) lucide.createIcons();
 </script>
