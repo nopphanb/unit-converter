@@ -27,7 +27,7 @@
   </header>
 
   <!-- Category tabs -->
-  <div id="tabs" class="inline-flex rounded-md border border-gray-200 bg-white p-1 mb-4"></div>
+  <div id="tabs" class="relative inline-flex rounded-md border border-gray-200 bg-white p-1 mb-4"></div>
 
   <!-- Currency status banner (currency tab only) -->
   <div id="currency-banner" class="hidden mb-4"></div>
@@ -291,24 +291,42 @@
     if (window.lucide) lucide.createIcons();
   }
 
-  function renderTabs() {
-    tabsEl.innerHTML = "";
-    Object.entries(CATEGORIES).forEach(([key, cat]) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
+  let indicatorBgClass = null;
+
+  function updateTabsActive() {
+    const indicator = document.getElementById("tabs-indicator");
+    const activeColor = CATEGORY_COLORS[activeCategory];
+    const newBgClass = `bg-${activeColor.bg}`;
+    if (indicatorBgClass) indicator.classList.remove(indicatorBgClass);
+    indicator.classList.add(newBgClass);
+    indicatorBgClass = newBgClass;
+
+    tabsEl.querySelectorAll("button[data-key]").forEach((btn) => {
+      const key = btn.dataset.key;
       const isActive = key === activeCategory;
       const c = CATEGORY_COLORS[key];
       btn.className =
-        "px-3 py-1.5 text-sm rounded-sm transition-colors " +
-        (isActive
-          ? `bg-${c.bg} text-${c.text} font-medium`
-          : "text-gray-600 hover:text-gray-900");
+        "relative z-10 px-3 py-1.5 text-sm rounded-sm transition-colors " +
+        (isActive ? `text-${c.text} font-medium` : "text-gray-600 hover:text-gray-900");
+      if (isActive) {
+        indicator.style.left = btn.offsetLeft + "px";
+        indicator.style.width = btn.offsetWidth + "px";
+      }
+    });
+  }
+
+  function buildTabs() {
+    tabsEl.innerHTML = '<div id="tabs-indicator" class="absolute top-1 bottom-1 rounded-sm"></div>';
+    Object.entries(CATEGORIES).forEach(([key, cat]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.key = key;
       btn.textContent = cat.label;
       btn.addEventListener("click", () => {
         if (activeCategory === key) return;
         activeCategory = key;
         activeUnit = CATEGORIES[activeCategory].base;
-        renderTabs();
+        updateTabsActive();
         renderCombobox();
         renderCurrencyBanner();
         applyCategoryTheme(activeCategory);
@@ -319,6 +337,14 @@
       });
       tabsEl.appendChild(btn);
     });
+
+    updateTabsActive();
+    // Enable the slide/fade transition only after the initial position is set,
+    // so the pill doesn't animate in from the top-left corner on page load.
+    requestAnimationFrame(() => {
+      document.getElementById("tabs-indicator").classList.add("transition-all", "duration-300", "ease-out");
+    });
+    window.addEventListener("resize", updateTabsActive);
   }
 
   function renderCombobox(filter = "") {
@@ -442,7 +468,7 @@
   });
 
   // Init
-  renderTabs();
+  buildTabs();
   renderCombobox();
   renderCurrencyBanner();
   applyCategoryTheme(activeCategory);
