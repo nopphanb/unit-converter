@@ -132,6 +132,17 @@
         thb: { label: "THB", name: "Thai Baht",     factor: null },
       },
     },
+    year: {
+      label: "Year",
+      icon: "calendar",
+      base: "be",
+      isYear: true,
+      // Years convert by offset, not by factor: base (AD) = value + offset.
+      units: {
+        be: { label: "BE", name: "Buddhist Era",   factor: 1, offset: -543 },
+        ad: { label: "AD", name: "Anno Domini",    factor: 1, offset: 0 },
+      },
+    },
   };
 
   const CATEGORY_COLORS = {
@@ -139,6 +150,7 @@
     length:   { text: "blue-700",   bg: "blue-50",   border: "blue-500",   ring: "blue-300"   },
     weight:   { text: "amber-700",  bg: "amber-50",  border: "amber-500",  ring: "amber-300"  },
     currency: { text: "violet-700", bg: "violet-50",  border: "violet-500", ring: "violet-300" },
+    year:     { text: "rose-700",   bg: "rose-50",   border: "rose-500",   ring: "rose-300"   },
   };
 
   const CURRENCY_CACHE_KEY = "currencyRates";
@@ -176,6 +188,12 @@
       return n.toExponential(4);
     }
     return n.toLocaleString(undefined, { maximumSignificantDigits: 6 });
+  }
+
+  function formatYear(n) {
+    if (!isFinite(n)) return "—";
+    // Years read without thousands separators (2569, not 2,569).
+    return String(Math.round(n * 1e6) / 1e6);
   }
 
   function todayStr() {
@@ -326,6 +344,10 @@
         if (activeCategory === key) return;
         activeCategory = key;
         activeUnit = CATEGORIES[activeCategory].base;
+        if (CATEGORIES[key].isYear) {
+          // Start from the current year rather than year 1.
+          valueInput.value = new Date().getFullYear() - CATEGORIES[key].units[activeUnit].offset;
+        }
         updateTabsActive();
         renderCombobox();
         renderCurrencyBanner();
@@ -428,14 +450,16 @@
 
     const raw = parseFloat(valueInput.value);
     const value = isNaN(raw) ? 0 : raw;
-    const baseValue = value * cat.units[activeUnit].factor;
+    const from = cat.units[activeUnit];
+    const baseValue = value * from.factor + (from.offset || 0);
+    const format = cat.isYear ? formatYear : formatNumber;
     const c = CATEGORY_COLORS[activeCategory];
 
     cardsEl.innerHTML = "";
     Object.entries(cat.units)
       .filter(([key]) => key !== activeUnit)
       .forEach(([key, u]) => {
-        const converted = baseValue / u.factor;
+        const converted = (baseValue - (u.offset || 0)) / u.factor;
         const card = document.createElement("div");
         card.className =
           `rounded-lg border border-gray-200 border-t-4 border-t-${c.border} bg-${c.bg} p-4 shadow-sm transition duration-300 hover:shadow-md hover:-translate-y-0.5`;
@@ -444,7 +468,7 @@
             <span class="text-xs uppercase tracking-wide font-semibold text-${c.text}">${u.label}</span>
             <span class="text-xs text-slate-500 truncate">${u.name}</span>
           </div>
-          <div class="text-xl font-bold text-slate-900 tabular-nums break-all">${formatNumber(converted)}</div>
+          <div class="text-xl font-bold text-slate-900 tabular-nums break-all">${format(converted)}</div>
         `;
         cardsEl.appendChild(card);
         requestAnimationFrame(() => {
