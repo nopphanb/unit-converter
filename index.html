@@ -27,11 +27,12 @@
   </header>
 
   <!-- Category tabs -->
-  <div id="tabs" class="relative inline-flex rounded-md border border-gray-200 bg-white p-1 mb-4"></div>
+  <div id="tabs" class="relative inline-flex max-w-full overflow-x-auto rounded-md border border-gray-200 bg-white p-1 mb-4"></div>
 
   <!-- Currency status banner (currency tab only) -->
   <div id="currency-banner" class="hidden mb-4"></div>
 
+  <div id="converter">
   <!-- Input row -->
   <div class="flex gap-2 mb-8">
     <input
@@ -74,6 +75,19 @@
 
   <!-- Output cards -->
   <div id="cards" class="grid grid-cols-2 gap-3"></div>
+  </div>
+
+  <!-- Unit price comparison (shop tab only) -->
+  <div id="shop" class="hidden">
+    <div id="shop-items" class="space-y-3 mb-3"></div>
+    <button
+      id="shop-add"
+      type="button"
+      class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition"
+    >
+      <i data-lucide="plus" class="w-4 h-4"></i> Add item
+    </button>
+  </div>
 
 </div>
 
@@ -121,6 +135,18 @@
         st: { label: "st", name: "Stone",      factor: 6350.29318 },
       },
     },
+    volume: {
+      label: "Volume",
+      icon: "beaker",
+      base: "ml",
+      units: {
+        ml:   { label: "ml",    name: "Milliliter",     factor: 1 },
+        l:    { label: "L",     name: "Liter",          factor: 1000 },
+        floz: { label: "fl oz", name: "US fluid ounce", factor: 29.5735295625 },
+        cup:  { label: "cup",   name: "US cup",         factor: 236.5882365 },
+        gal:  { label: "gal",   name: "US gallon",      factor: 3785.411784 },
+      },
+    },
     currency: {
       label: "Currency",
       icon: "banknote",
@@ -149,8 +175,10 @@
     area:     { text: "teal-700",   bg: "teal-50",   border: "teal-500",   ring: "teal-300"   },
     length:   { text: "blue-700",   bg: "blue-50",   border: "blue-500",   ring: "blue-300"   },
     weight:   { text: "amber-700",  bg: "amber-50",  border: "amber-500",  ring: "amber-300"  },
+    volume:   { text: "cyan-700",   bg: "cyan-50",   border: "cyan-500",   ring: "cyan-300"   },
     currency: { text: "violet-700", bg: "violet-50",  border: "violet-500", ring: "violet-300" },
     year:     { text: "rose-700",   bg: "rose-50",   border: "rose-500",   ring: "rose-300"   },
+    shop:     { text: "emerald-700", bg: "emerald-50", border: "emerald-500", ring: "emerald-300" },
   };
 
   const CURRENCY_CACHE_KEY = "currencyRates";
@@ -170,6 +198,9 @@
   const cardsEl = document.getElementById("cards");
   const currencyBannerEl = document.getElementById("currency-banner");
   const headerIconWrap = document.getElementById("header-icon-wrap");
+  const converterEl = document.getElementById("converter");
+  const shopEl = document.getElementById("shop");
+  const shopItemsEl = document.getElementById("shop-items");
 
   function applyCategoryTheme(key) {
     const c = CATEGORY_COLORS[key];
@@ -324,7 +355,7 @@
       const isActive = key === activeCategory;
       const c = CATEGORY_COLORS[key];
       btn.className =
-        "relative z-10 px-3 py-1.5 text-sm rounded-sm transition-colors " +
+        "relative z-10 shrink-0 whitespace-nowrap px-2 py-1.5 text-sm rounded-sm transition-colors " +
         (isActive ? `text-${c.text} font-medium` : "text-gray-600 hover:text-gray-900");
       if (isActive) {
         indicator.style.left = btn.offsetLeft + "px";
@@ -335,7 +366,7 @@
 
   function buildTabs() {
     tabsEl.innerHTML = '<div id="tabs-indicator" class="absolute top-1 bottom-1 rounded-sm"></div>';
-    Object.entries(CATEGORIES).forEach(([key, cat]) => {
+    [...Object.entries(CATEGORIES), ["shop", { label: "Unit price" }]].forEach(([key, cat]) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.dataset.key = key;
@@ -343,11 +374,13 @@
       btn.addEventListener("click", () => {
         if (activeCategory === key) return;
         activeCategory = key;
-        activeUnit = CATEGORIES[activeCategory].base;
-        if (CATEGORIES[key].isYear) {
+        activeUnit = CATEGORIES[key]?.base;
+        if (CATEGORIES[key]?.isYear) {
           // Start from the current year rather than year 1.
           valueInput.value = new Date().getFullYear() - CATEGORIES[key].units[activeUnit].offset;
         }
+        converterEl.classList.toggle("hidden", key === "shop");
+        shopEl.classList.toggle("hidden", key !== "shop");
         updateTabsActive();
         renderCombobox();
         renderCurrencyBanner();
@@ -370,6 +403,7 @@
   }
 
   function renderCombobox(filter = "") {
+    if (activeCategory === "shop") return;
     const cat = CATEGORIES[activeCategory];
     comboboxLabel.textContent = cat.units[activeUnit].label;
 
@@ -428,6 +462,7 @@
   }
 
   function renderCards() {
+    if (activeCategory === "shop") return;
     const cat = CATEGORIES[activeCategory];
     const factorsReady = Object.values(cat.units).every((u) => typeof u.factor === "number");
 
@@ -477,7 +512,136 @@
       });
   }
 
+  // Unit price comparison
+  const SHOP_REF = { weight: [100, "100 g"], volume: [100, "100 ml"], count: [1, "pc"] };
+  const SHOP_DIMS = {
+    weight: CATEGORIES.weight.units,
+    volume: CATEGORIES.volume.units,
+    count: { pcs: { label: "pcs", name: "Pieces", factor: 1 } },
+  };
+  const SHOP_INPUT =
+    "mt-1 block w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 py-2 text-base text-gray-900 tabular-nums shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-500 transition";
+  const SHOP_UNIT_OPTIONS = Object.entries(SHOP_DIMS)
+    .map(([dim, units]) =>
+      `<optgroup label="${dim[0].toUpperCase() + dim.slice(1)}">` +
+      Object.entries(units).map(([key, u]) => `<option value="${dim}:${key}">${u.label}</option>`).join("") +
+      `</optgroup>`)
+    .join("");
+
+  // items: [{ price, qty, dim, factor }] → per item: null if invalid, else { perRef, best, pctMore }.
+  // Items only compete with others of the same dimension (g vs ml never compare).
+  function rankUnitPrices(items) {
+    const perBase = items.map((it) => (it.price > 0 && it.qty > 0 ? it.price / (it.qty * it.factor) : null));
+    const best = {}, count = {};
+    items.forEach((it, i) => {
+      if (perBase[i] === null) return;
+      count[it.dim] = (count[it.dim] || 0) + 1;
+      best[it.dim] = Math.min(best[it.dim] ?? Infinity, perBase[i]);
+    });
+    return items.map((it, i) => {
+      const p = perBase[i];
+      if (p === null) return null;
+      const comparable = count[it.dim] >= 2;
+      return {
+        perRef: p * SHOP_REF[it.dim][0],
+        best: comparable && p <= best[it.dim] * (1 + 1e-9), // epsilon: float noise from unit factors
+        pctMore: comparable ? Math.round((p / best[it.dim] - 1) * 100) : null,
+      };
+    });
+  }
+
+  {
+    const w = CATEGORIES.weight.units;
+    const [a, b] = rankUnitPrices([
+      { price: 89, qty: 450, dim: "weight", factor: w.g.factor },
+      { price: 169, qty: 1, dim: "weight", factor: w.kg.factor },
+    ]);
+    console.assert(b.best && !a.best && a.pctMore === 17, "unit price: 1 kg pack should win by 17%");
+    const [x, y] = rankUnitPrices([
+      { price: 10, qty: 100, dim: "weight", factor: 1 },
+      { price: 1, qty: 100, dim: "volume", factor: 1 },
+    ]);
+    console.assert(!x.best && !y.best && x.pctMore === null, "unit price: different dimensions must not compete");
+    console.assert(rankUnitPrices([{ price: 5, qty: 0, dim: "count", factor: 1 }])[0] === null, "unit price: zero size is invalid");
+  }
+
+  function formatMoney(n) {
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderShop() {
+    const rows = [...shopItemsEl.children];
+    const items = rows.map((row) => {
+      const [dim, unit] = row.querySelector("select").value.split(":");
+      return {
+        price: parseFloat(row.querySelector("[name=price]").value),
+        qty: parseFloat(row.querySelector("[name=qty]").value),
+        dim,
+        factor: SHOP_DIMS[dim][unit].factor,
+      };
+    });
+    const ranks = rankUnitPrices(items);
+
+    rows.forEach((row, i) => {
+      row.querySelector("[data-letter]").textContent = `Item ${String.fromCharCode(65 + i)}`;
+      row.querySelector("[data-remove]").classList.toggle("invisible", rows.length <= 2);
+      const r = ranks[i];
+      const out = row.querySelector("[data-result]");
+      if (!r) {
+        out.innerHTML = `<span class="text-slate-400">—</span>`;
+        return;
+      }
+      const badge = r.best
+        ? `<span class="ml-auto rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Best value</span>`
+        : r.pctMore !== null
+          ? `<span class="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 tabular-nums">+${r.pctMore}%</span>`
+          : "";
+      out.innerHTML = `
+        <span class="text-lg font-bold text-slate-900 tabular-nums">${formatMoney(r.perRef)}</span>
+        <span class="text-slate-500">per ${SHOP_REF[items[i].dim][1]}</span>
+        ${badge}`;
+    });
+  }
+
+  function addShopItem() {
+    const row = document.createElement("div");
+    row.className = "rounded-lg border border-gray-200 bg-white p-4 shadow-sm";
+    row.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <span data-letter class="text-xs uppercase tracking-wide font-semibold text-emerald-700"></span>
+        <button data-remove type="button" aria-label="Remove item" class="text-gray-400 hover:text-gray-700">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="grid grid-cols-3 gap-2">
+        <label class="text-xs text-slate-500">Price
+          <input name="price" type="number" min="0" step="any" inputmode="decimal" class="${SHOP_INPUT}" />
+        </label>
+        <label class="text-xs text-slate-500">Size
+          <input name="qty" type="number" min="0" step="any" inputmode="decimal" class="${SHOP_INPUT}" />
+        </label>
+        <label class="text-xs text-slate-500">Unit
+          <select class="${SHOP_INPUT}">${SHOP_UNIT_OPTIONS}</select>
+        </label>
+      </div>
+      <div data-result class="mt-3 flex items-baseline gap-1.5 text-sm"></div>`;
+    // New rows default to the previous row's unit, so a run of ml items stays in ml.
+    row.querySelector("select").value =
+      shopItemsEl.lastElementChild?.querySelector("select").value ?? "weight:g";
+    shopItemsEl.appendChild(row);
+    if (window.lucide) lucide.createIcons();
+    renderShop();
+  }
+
   // Events
+  shopItemsEl.addEventListener("input", renderShop);
+  shopItemsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove]");
+    if (!btn || shopItemsEl.children.length <= 2) return;
+    [...shopItemsEl.children].find((row) => row.contains(btn)).remove();
+    renderShop();
+  });
+  document.getElementById("shop-add").addEventListener("click", addShopItem);
   valueInput.addEventListener("input", renderCards);
   comboboxTrigger.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -497,6 +661,8 @@
   renderCurrencyBanner();
   applyCategoryTheme(activeCategory);
   renderCards();
+  addShopItem();
+  addShopItem();
   if (window.lucide) lucide.createIcons();
 </script>
 
